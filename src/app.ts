@@ -7,6 +7,7 @@ import resumeRoutes from './routes/resumeRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
+app.set('trust proxy', 1);
 const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim());
