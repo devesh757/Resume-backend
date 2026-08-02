@@ -8,10 +8,26 @@ import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 app.set('trust proxy', 1);
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const corsOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
-  .map((o) => o.trim());
-app.use(cors({ origin: corsOrigins, credentials: true }));
+  .map((o) => o.trim())
+  .filter(Boolean);
+const allowedOrigins = new Set([
+  'http://localhost:5173',
+  'https://resume-frontend-beta-sooty.vercel.app',
+  ...corsOrigins,
+]);
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 
