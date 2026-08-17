@@ -76,7 +76,8 @@ export const generatePDF = async (resume: IResume): Promise<Buffer> => {
     const page = await browser.newPage();
     
     // 3. PASS THE CORRECT VARIABLE NAME HERE
-    await page.setContent(htmlTemplate, { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.setContent(htmlTemplate, { waitUntil: ['load', 'domcontentloaded'], timeout: 30000 });
+
     
     const pdfBuffer = await page.pdf({ 
       format: 'A4', 
