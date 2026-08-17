@@ -18,10 +18,14 @@ router.route('/').get(getResumes).post(createResume);
 router.route('/:id').get(getResume).put(updateResume).delete(deleteResume);
 router.post('/:id/duplicate', duplicateResume);
 
-router.get('/:id/pdf', async (req: AuthRequest, res: Response) => {
+router.post('/:id/pdf', async (req: AuthRequest, res: Response) => {
   const resume = await Resume.findOne({ _id: req.params.id, userId: req.user._id });
   if (!resume) return res.status(404).json({ message: 'Not found' });
-  const pdf = await generatePDF(resume);
+  const { html, css } = req.body ?? {};
+  if (typeof html !== 'string' || typeof css !== 'string') {
+    return res.status(400).json({ message: 'Missing html or css in request body' });
+  }
+  const pdf = await generatePDF(html, css);
   const filename = resume.title.replace(/[^\w\- ]/g, '').trim() || 'resume';
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);

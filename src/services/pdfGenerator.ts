@@ -1,65 +1,45 @@
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
-import { IResume } from '../models/Resume';
 
-export const generatePDF = async (resume: IResume): Promise<Buffer> => {
-  // Safe fallbacks to prevent undefined mapping crashes
-  const workExperience = resume.workExperience || [];
-  const education = resume.education || [];
-  const skills = resume.skills || [];
-  const projects = resume.projects || [];
-  const customSections = resume.customSections || [];
-  
-  const fontName = resume.theme?.font || 'sans-serif';
-  const primaryColor = resume.theme?.primaryColor || '#3b82f6';
+const GOOGLE_FONT_URLS: Record<string, string> = {
+  Inter: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
+  Poppins: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap',
+  'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&display=swap',
+  Roboto: 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap',
+  Lora: 'https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap',
+};
 
-  // 1. GENERATE THE HTML STRING INSIDE THE FUNCTION
-  const htmlTemplate = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://tailwindcss.com"></script>
-        <style>
-          body { font-family: '${fontName}', sans-serif; }
-          .primary-color { color: ${primaryColor}; }
-          .border-primary { border-color: ${primaryColor}; }
-        </style>
-      </head>
-      <body class="bg-white">
-        <div class="max-w-4xl mx-auto p-8 bg-white">
-          <div class="text-center mb-6">
-            <h1 class="text-4xl font-bold">${resume.personalInfo?.firstName || ''} ${resume.personalInfo?.lastName || ''}</h1>
-            <p class="text-gray-600">${resume.personalInfo?.email || ''} | ${resume.personalInfo?.phone || ''}</p>
-          </div>
-          
-          ${workExperience.map(exp => `
-            <div class="mb-4">
-              <h2 class="text-xl font-semibold primary-color">${exp.role || ''} at ${exp.company || ''}</h2>
-              <p class="text-sm text-gray-500">${exp.startDate || ''} - ${exp.endDate || 'Present'}</p>
-              <ul class="list-disc ml-6">
-                ${(exp.description || []).map(b => `<li>${b}</li>`).join('')}
-              </ul>
-            </div>
-          `).join('')}
-          
-          ${education.map(edu => `
-            <div class="mb-4">
-              <h2 class="text-xl font-semibold primary-color">${edu.institution || ''}</h2>
-              <p>${edu.degree || ''} ${edu.major ? `- ${edu.major}` : ''}</p>
-              <p class="text-sm text-gray-500">${edu.graduationDate || ''}</p>
-            </div>
-          `).join('')}
-        </div>
-      </body>
-    </html>
-  `;
+const fontLinks = (html: string): string => {
+  const urls = new Set<string>();
+  const re = /font-family\s*:\s*(?:'|")?([^;'"}]+?)(?:'|")?/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    const name = match[1].trim().split(',')[0].trim();
+    const url = GOOGLE_FONT_URLS[name];
+    if (url) urls.add(url);
+  }
+  return [...urls].map((url) => `<link rel="stylesheet" href="${url}">`).join('');
+};
+
+export const generatePDF = async (html: string, css: string): Promise<Buffer> => {
+  // Strip scripts and print-only shadow classes before rendering
+  const safeHtml = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\bshadow(-[a-z0-9]+)?\b/g, '');
+
+  const htmlTemplate = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    ${fontLinks(safeHtml)}
+    <style>${css}</style>
+  </head>
+  <body>${safeHtml}</body>
+</html>`;
 
   let browser;
   try {
-    // 2. CONFIGURE THE LITE EXECUTABLE PATH
-    const executablePath = await chromium.executablePath();
+    const executablePath = process.env.CHROME_PATH || (await chromium.executablePath());
 
     browser = await puppeteer.launch({
       executablePath: executablePath,
@@ -68,26 +48,29 @@ export const generatePDF = async (resume: IResume): Promise<Buffer> => {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--single-process'
+        '--single-process',
       ],
       headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-    
-    // 3. PASS THE CORRECT VARIABLE NAME HERE
-    await page.setContent(htmlTemplate, { waitUntil: ['load', 'domcontentloaded'], timeout: 30000 });
+    await page.setContent(htmlTemplate, {
+      waitUntil: ['load', 'domcontentloaded'],
+      timeout: 30000,
+    });
+    await page.evaluate(
+      () => (globalThis as unknown as { document: { fonts: { ready: Promise<unknown> } } }).document.fonts.ready
+    );
 
-    
-    const pdfBuffer = await page.pdf({ 
-      format: 'A4', 
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
       printBackground: true,
-      margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' }
+      margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });
 
     return pdfBuffer as Buffer;
   } catch (error) {
-    console.error("PDF GENERATION ERROR:", error);
+    console.error('PDF GENERATION ERROR:', error);
     throw error;
   } finally {
     if (browser) {
