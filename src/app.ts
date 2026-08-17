@@ -34,6 +34,8 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/resumes', resumeRoutes);
 
